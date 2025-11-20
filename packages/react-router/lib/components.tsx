@@ -542,22 +542,31 @@ export function RouterProvider({
     nextLocation: Location;
   }>();
   let fetcherData = React.useRef<Map<string, any>>(new Map());
+  let logErrorsAndSetState = React.useCallback(
+    (newState: RouterState) => {
+      setStateImpl((prevState) => {
+        // Send loader/action errors through handleError
+        if (newState.errors && onError) {
+          Object.entries(newState.errors).forEach(([routeId, error]) => {
+            if (prevState.errors?.[routeId] !== error) {
+              onError(error, {
+                location: newState.location,
+                params: newState.matches[0]?.params ?? {},
+              });
+            }
+          });
+        }
+        return newState;
+      });
+    },
+    [onError],
+  );
 
   let setState = React.useCallback<RouterSubscriber>(
     (
       newState: RouterState,
-      { deletedFetchers, newErrors, flushSync, viewTransitionOpts },
+      { deletedFetchers, flushSync, viewTransitionOpts },
     ) => {
-      // Send router errors through onError
-      if (newErrors && onError) {
-        Object.values(newErrors).forEach((error) =>
-          onError(error, {
-            location: newState.location,
-            params: newState.matches[0]?.params ?? {},
-          }),
-        );
-      }
-
       newState.fetchers.forEach((fetcher, key) => {
         if (fetcher.data !== undefined) {
           fetcherData.current.set(key, fetcher.data);
@@ -591,9 +600,9 @@ export function RouterProvider({
       // just update and be done with it
       if (!viewTransitionOpts || !isViewTransitionAvailable) {
         if (reactDomFlushSyncImpl && flushSync) {
-          reactDomFlushSyncImpl(() => setStateImpl(newState));
+          reactDomFlushSyncImpl(() => logErrorsAndSetState(newState));
         } else {
-          React.startTransition(() => setStateImpl(newState));
+          React.startTransition(() => logErrorsAndSetState(newState));
         }
         return;
       }
@@ -617,7 +626,7 @@ export function RouterProvider({
 
         // Update the DOM
         let t = router.window!.document.startViewTransition(() => {
-          reactDomFlushSyncImpl(() => setStateImpl(newState));
+          reactDomFlushSyncImpl(() => logErrorsAndSetState(newState));
         });
 
         // Clean up after the animation completes
@@ -656,7 +665,13 @@ export function RouterProvider({
         });
       }
     },
-    [router.window, reactDomFlushSyncImpl, transition, renderDfd, onError],
+    [
+      router.window,
+      reactDomFlushSyncImpl,
+      transition,
+      renderDfd,
+      logErrorsAndSetState,
+    ],
   );
 
   // Need to use a layout effect here so we are subscribed early enough to
@@ -679,7 +694,7 @@ export function RouterProvider({
       let newState = pendingState;
       let renderPromise = renderDfd.promise;
       let transition = router.window.document.startViewTransition(async () => {
-        React.startTransition(() => setStateImpl(newState));
+        React.startTransition(() => logErrorsAndSetState(newState));
         await renderPromise;
       });
       transition.finished.finally(() => {
@@ -690,7 +705,7 @@ export function RouterProvider({
       });
       setTransition(transition);
     }
-  }, [pendingState, renderDfd, router.window]);
+  }, [pendingState, renderDfd, router.window, logErrorsAndSetState]);
 
   // When the new location finally renders and is committed to the DOM, this
   // effect will run to resolve the transition

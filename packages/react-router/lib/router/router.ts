@@ -489,7 +489,6 @@ export interface RouterSubscriber {
     state: RouterState,
     opts: {
       deletedFetchers: string[];
-      newErrors: RouteData | null;
       viewTransitionOpts?: ViewTransitionOpts;
       flushSync: boolean;
     },
@@ -1293,7 +1292,6 @@ export function createRouter(init: RouterInit): Router {
     [...subscribers].forEach((subscriber) =>
       subscriber(state, {
         deletedFetchers: unmountedFetchers,
-        newErrors: newState.errors ?? null,
         viewTransitionOpts: opts.viewTransitionOpts,
         flushSync: opts.flushSync === true,
       }),
